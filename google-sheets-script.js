@@ -32,6 +32,7 @@ function doPost(e) {
       sheet.appendRow([
         "Data / Hora",
         "Nome Completo",
+        "CPF",
         "WhatsApp",
         "Categoria",
         "Instrumento",
@@ -47,6 +48,7 @@ function doPost(e) {
     sheet.appendRow([
       data.dataHora || new Date().toLocaleString("pt-BR"),
       data.nome || "",
+      data.cpf || "",
       data.whatsapp || "",
       data.categoria || "",
       data.instrumento || "-",

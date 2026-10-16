@@ -212,6 +212,13 @@
             <input type="text" id="nome" class="form-control" placeholder="Seu nome completo" required autocomplete="name">
           </div>
 
+          <!-- CPF Field -->
+          <div class="form-group">
+            <label class="form-label" for="cpf">CPF <span class="req">*</span></label>
+            <input type="tel" id="cpf" class="form-control" placeholder="000.000.000-00" required autocomplete="off">
+            <p class="form-hint">Necessário para o seguro e lista oficial de passageiros do ônibus.</p>
+          </div>
+
           <!-- WhatsApp Field -->
           <div class="form-group">
             <label class="form-label" for="whatsapp">WhatsApp / Celular <span class="req">*</span></label>
@@ -386,6 +393,10 @@
         <div class="summary-row">
           <span>Participante:</span>
           <strong id="modalSummaryNome">-</strong>
+        </div>
+        <div class="summary-row">
+          <span>CPF:</span>
+          <strong id="modalSummaryCpf">-</strong>
         </div>
         <div class="summary-row">
           <span>Categoria:</span>

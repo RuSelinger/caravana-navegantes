@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Elementos do DOM
   const form = document.getElementById('registrationForm');
   const submitBtn = document.getElementById('submitBtn');
+  const cpfInput = document.getElementById('cpf');
   const whatsappInput = document.getElementById('whatsapp');
   const categoryInputs = document.querySelectorAll('input[name="categoria"]');
   const musicoField = document.getElementById('musicoField');
@@ -56,7 +57,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 1. Formatação de Telefone / WhatsApp com Máscara
+  // 1. Formatação de CPF com Máscara (000.000.000-00)
+  if (cpfInput) {
+    cpfInput.addEventListener('input', (e) => {
+      let val = e.target.value.replace(/\D/g, '');
+      if (val.length > 11) val = val.substring(0, 11);
+      
+      if (val.length > 9) {
+        val = `${val.substring(0, 3)}.${val.substring(3, 6)}.${val.substring(6, 9)}-${val.substring(9)}`;
+      } else if (val.length > 6) {
+        val = `${val.substring(0, 3)}.${val.substring(3, 6)}.${val.substring(6)}`;
+      } else if (val.length > 3) {
+        val = `${val.substring(0, 3)}.${val.substring(3)}`;
+      }
+      e.target.value = val;
+    });
+  }
+
+  // 2. Formatação de Telefone / WhatsApp com Máscara ((00) 00000-0000)
   if (whatsappInput) {
     whatsappInput.addEventListener('input', (e) => {
       let val = e.target.value.replace(/\D/g, '');
@@ -73,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 2. Troca de Categoria e Exibição de Campos Condicionais
+  // 3. Troca de Categoria e Exibição de Campos Condicionais
   categoryInputs.forEach(radio => {
     radio.addEventListener('change', () => {
       document.querySelectorAll('.category-card').forEach(card => card.classList.remove('selected'));
@@ -91,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 3. Copiar Chave PIX
+  // 4. Copiar Chave PIX
   if (btnCopyPix) {
     btnCopyPix.addEventListener('click', () => {
       const keyToCopy = config.chavePix;
@@ -121,12 +139,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 4. Envio do Formulário de Inscrição (1 vaga por pessoa)
+  // 5. Envio do Formulário de Inscrição (1 vaga por pessoa com CPF)
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
       const nome = document.getElementById('nome').value.trim();
+      const cpf = document.getElementById('cpf').value.trim();
       const whatsapp = document.getElementById('whatsapp').value.trim();
       const comum = document.getElementById('comum').value.trim();
       const categoriaRadio = document.querySelector('input[name="categoria"]:checked');
@@ -134,21 +153,30 @@ document.addEventListener('DOMContentLoaded', () => {
       const instrumento = document.getElementById('instrumento')?.value.trim() || '';
       const obs = document.getElementById('observacoes')?.value.trim() || '';
 
-      if (!nome || !whatsapp || !comum || !categoria) {
+      if (!nome || !cpf || !whatsapp || !comum || !categoria) {
         alert('Por favor, preencha todos os campos obrigatórios.');
         return;
       }
 
-      // Validação: Impede duplicidade pelo número de telefone
+      // Validação básica do formato do CPF
+      const cleanCpf = cpf.replace(/\D/g, '');
+      if (cleanCpf.length !== 11) {
+        alert('Por favor, digite um CPF válido com 11 dígitos.');
+        document.getElementById('cpf').focus();
+        return;
+      }
+
+      // Validação: Impede duplicidade pelo número de telefone ou CPF
       const cleanPhone = whatsapp.replace(/\D/g, '');
       const existingList = getLocalRegistrations();
       const alreadyRegistered = existingList.find(item => {
-        const itemCleanPhone = item.whatsapp.replace(/\D/g, '');
-        return itemCleanPhone === cleanPhone && cleanPhone.length >= 10;
+        const itemCleanPhone = item.whatsapp ? item.whatsapp.replace(/\D/g, '') : '';
+        const itemCleanCpf = item.cpf ? item.cpf.replace(/\D/g, '') : '';
+        return (cleanCpf && itemCleanCpf === cleanCpf) || (cleanPhone && itemCleanPhone === cleanPhone && cleanPhone.length >= 10);
       });
 
       if (alreadyRegistered) {
-        alert(`Atenção: Já existe uma vaga confirmada para este número de WhatsApp em nome de ${alreadyRegistered.nome}.\n\nCada participante deve confirmar sua própria vaga individualmente.`);
+        alert(`Atenção: Já existe uma vaga confirmada para este CPF ou WhatsApp em nome de ${alreadyRegistered.nome}.\n\nCada participante deve confirmar sua própria vaga individualmente.`);
         return;
       }
 
@@ -159,6 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
         id: 'INS_' + Date.now(),
         dataHora: new Date().toLocaleString('pt-BR'),
         nome: nome,
+        cpf: cpf,
         whatsapp: whatsapp,
         categoria: categoria,
         instrumento: categoria === 'Músico' ? instrumento : '-',
@@ -181,6 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
               id: inscricao.id,
               data_hora: inscricao.dataHora,
               nome: inscricao.nome,
+              cpf: inscricao.cpf,
               whatsapp: inscricao.whatsapp,
               categoria: inscricao.categoria,
               instrumento: inscricao.instrumento,
@@ -238,6 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Exibe o modal de sucesso com link de WhatsApp formatado
   function showSuccessModal(item) {
     document.getElementById('modalSummaryNome').textContent = item.nome;
+    const cpfEl = document.getElementById('modalSummaryCpf');
+    if (cpfEl) cpfEl.textContent = item.cpf;
     document.getElementById('modalSummaryCategoria').textContent = item.categoria + (item.instrumento !== '-' ? ` (${item.instrumento})` : '');
     document.getElementById('modalSummaryComum').textContent = item.comum;
     document.getElementById('modalSummaryVagas').textContent = '1 Vaga Individual';
@@ -246,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const msg = encodeURIComponent(
       `Olá! Confirmei minha presença na Caravana para Navegantes! 🚌✨\n\n` +
       `👤 Nome: ${item.nome}\n` +
+      `📄 CPF: ${item.cpf}\n` +
       `⛪ Comum: ${item.comum}\n` +
       `👥 Categoria: ${item.categoria}${item.instrumento !== '-' ? ' (' + item.instrumento + ')' : ''}\n` +
       `🎫 Vaga: 1 Pessoa (Individual)\n` +
@@ -269,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 5. Painel do Organizador (Admin)
+  // 6. Painel do Organizador (Admin)
   if (openAdminBtn) {
     openAdminBtn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -325,6 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
             id: row.id,
             dataHora: row.data_hora,
             nome: row.nome,
+            cpf: row.cpf || '-',
             whatsapp: row.whatsapp,
             categoria: row.categoria,
             instrumento: row.instrumento || '-',
@@ -360,6 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 id: 'GS_' + idx + '_' + (row['Data / Hora'] || Date.now()),
                 dataHora: row['Data / Hora'] ? new Date(row['Data / Hora']).toLocaleString('pt-BR') : '',
                 nome: row['Nome Completo'] || '',
+                cpf: row['CPF'] || '-',
                 whatsapp: row['WhatsApp'] || '',
                 categoria: row['Categoria'] || '',
                 instrumento: row['Instrumento'] || '-',
@@ -439,7 +474,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const isPago = item.statusPagamento === 'Confirmado' || item.statusPagamento === 'Pago';
 
         tr.innerHTML = `
-          <td><strong>${item.nome}</strong></td>
+          <td>
+            <strong>${item.nome}</strong>
+            ${item.cpf && item.cpf !== '-' ? `<br><small style="color:#666;">CPF: ${item.cpf}</small>` : ''}
+          </td>
           <td>
             <a href="${zapLink}" target="_blank" style="color: #128C7E; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
               <span>${item.whatsapp}</span>
@@ -499,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const q = searchInput.value.toLowerCase().trim();
       const cat = filterSelect.value;
       const filtered = list.filter(item => {
-        const matchesQuery = item.nome.toLowerCase().includes(q) || item.comum.toLowerCase().includes(q) || item.whatsapp.includes(q);
+        const matchesQuery = item.nome.toLowerCase().includes(q) || (item.cpf && item.cpf.includes(q)) || item.comum.toLowerCase().includes(q) || item.whatsapp.includes(q);
         const matchesCat = !cat || item.categoria === cat;
         return matchesQuery && matchesCat;
       });
@@ -549,7 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast('Inscrição removida!');
   }
 
-  // 6. Exportar para CSV / Excel
+  // 7. Exportar para CSV / Excel (inclui CPF)
   const btnExportCsv = document.getElementById('btnExportCsv');
   if (btnExportCsv) {
     btnExportCsv.addEventListener('click', () => {
@@ -559,10 +597,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      const headers = ['Data Inscrição', 'Nome Completo', 'WhatsApp', 'Categoria', 'Instrumento', 'Comum', 'Vagas', 'Valor Total', 'Status'];
+      const headers = ['Data Inscrição', 'Nome Completo', 'CPF', 'WhatsApp', 'Categoria', 'Instrumento', 'Comum', 'Vagas', 'Valor Total', 'Status'];
       const rows = list.map(i => [
         `"${i.dataHora}"`,
         `"${i.nome}"`,
+        `"${i.cpf || '-'}"`,
         `"${i.whatsapp}"`,
         `"${i.categoria}"`,
         `"${i.instrumento}"`,
@@ -585,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 7. Imprimir Lista de Embarque
+  // 8. Imprimir Lista de Embarque
   const btnPrintList = document.getElementById('btnPrintList');
   if (btnPrintList) {
     btnPrintList.addEventListener('click', () => {

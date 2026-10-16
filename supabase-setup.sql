@@ -12,11 +12,12 @@
 -- 6. Cole esses 2 valores no arquivo js/config.js nos campos supabaseUrl e supabaseAnonKey.
 -- =========================================================
 
--- Cria a tabela de inscrições da caravana
+-- Cria a tabela de inscrições da caravana (com campo CPF)
 create table public.inscricoes (
   id text primary key,
   data_hora text,
   nome text not null,
+  cpf text not null,
   whatsapp text not null,
   categoria text not null,
   instrumento text default '-',
