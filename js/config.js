@@ -21,7 +21,7 @@ const CARAVANA_CONFIG = {
 
   // Integração com Google Planilhas (100% Gratuito)
   // Quando criar o Apps Script no Google Sheets, cole a URL de implantação aqui:
-  googleSheetsUrl: "" 
+  googleSheetsUrl: "https://script.google.com/macros/s/AKfycbxaRo9zHOI19HnuUQSkel8_fQN_q5OJ7-IV79zG46tVo9KVmJyugEvm3JOoS-paZWICAg/exec" 
 };
 
 // Exporta para uso global
