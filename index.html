@@ -16,7 +16,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=1.7">
 </head>
 <body>
 
@@ -466,15 +466,6 @@
         </div>
 
         <div class="admin-actions">
-          <button id="btnRefreshList" class="btn-secondary" title="Sincronizar com a Planilha do Google">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <polyline points="1 20 1 14 7 14"></polyline>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-            Atualizar
-          </button>
-
           <button id="btnExportCsv" class="btn-secondary btn-secondary-green" title="Baixar planilha para Excel">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -501,10 +492,10 @@
           <thead>
             <tr>
               <th>Nome</th>
+              <th>CPF</th>
               <th>WhatsApp</th>
               <th>Categoria</th>
               <th>Comum</th>
-              <th style="text-align:center;">Vagas</th>
               <th style="text-align:center;">Pagamento</th>
               <th style="text-align:center;">Ações</th>
             </tr>
@@ -517,7 +508,7 @@
 
       <div style="margin-top: 16px; font-size: 0.8rem; color: #777; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
         <span>💡 Dica: Clique no botão de status para alternar entre "Pendente" e "Pago".</span>
-        <span>As confirmações ficam salvas no navegador e podem ser sincronizadas com o Google Sheets.</span>
+        <span>As confirmações são sincronizadas em tempo real com o banco de dados.</span>
       </div>
 
     </div>
@@ -528,7 +519,7 @@
 
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=1.6"></script>
-  <script src="js/app.js?v=1.6"></script>
+  <script src="js/config.js?v=1.7"></script>
+  <script src="js/app.js?v=1.7"></script>
 </body>
 </html>

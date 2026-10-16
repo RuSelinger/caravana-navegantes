@@ -34,7 +34,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const adminModal = document.getElementById('adminModal');
   const openAdminBtn = document.getElementById('openAdminBtn');
   const closeAdminBtn = document.getElementById('closeAdminBtn');
-  const btnRefreshList = document.getElementById('btnRefreshList');
   const toast = document.getElementById('toastNotice');
 
   // Inicializa textos da página com base na configuração
@@ -331,25 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (btnRefreshList) {
-    btnRefreshList.addEventListener('click', async () => {
-      btnRefreshList.disabled = true;
-      btnRefreshList.innerHTML = `<span>Sincronizando...</span>`;
-      await syncWithDatabase();
-      renderAdminDashboard();
-      btnRefreshList.disabled = false;
-      btnRefreshList.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="23 4 23 10 17 10"></polyline>
-          <polyline points="1 20 1 14 7 14"></polyline>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-        </svg>
-        Atualizar
-      `;
-      showToast('Lista sincronizada com a nuvem!');
-    });
-  }
-
   // Sincroniza dados com o Banco de Dados (Supabase) ou Planilha (Google Sheets)
   async function syncWithDatabase() {
     // 1. Prioridade: Supabase (Ultra-Rápido e Confiável)
@@ -470,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
       tbody.innerHTML = '';
 
       if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 24px; color: #888;">Nenhuma confirmação registrada ainda.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 24px; color: #888;">Nenhuma confirmação registrada ainda.</td></tr>`;
         return;
       }
 
@@ -481,10 +461,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const isPago = item.statusPagamento === 'Confirmado' || item.statusPagamento === 'Pago';
 
         tr.innerHTML = `
-          <td>
-            <strong>${item.nome}</strong>
-            ${item.cpf && item.cpf !== '-' ? `<br><small style="color:#666;">CPF: ${item.cpf}</small>` : ''}
-          </td>
+          <td><strong>${item.nome}</strong></td>
+          <td><span style="font-family: monospace; font-size: 0.88rem; color: #334155; font-weight: 500;">${item.cpf && item.cpf !== '-' ? item.cpf : '-'}</span></td>
           <td>
             <a href="${zapLink}" target="_blank" style="color: #128C7E; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
               <span>${item.whatsapp}</span>
@@ -493,11 +471,11 @@ document.addEventListener('DOMContentLoaded', () => {
           </td>
           <td>
             <span class="badge-cat">${item.categoria}</span>
-            ${item.instrumento !== '-' ? `<br><small style="color:#666;">🎻 ${item.instrumento}</small>` : ''}
+            ${item.instrumento && item.instrumento !== '-' ? `<br><small style="color:#666;">🎻 ${item.instrumento}</small>` : ''}
           </td>
           <td>${item.comum}</td>
           <td style="text-align:center;">
-            <button class="status-btn ${isPago ? 'btn-paid' : 'btn-pending'}" data-id="${item.id}">
+            <button class="status-btn ${isPago ? 'btn-paid' : 'btn-pending'}" data-id="${item.id}" title="Clique para alternar status">
               ${isPago ? '✓ Pago' : '⏳ Pendente'}
             </button>
           </td>
