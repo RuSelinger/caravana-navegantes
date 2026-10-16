@@ -4,13 +4,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const savedConfig = localStorage.getItem('caravana_custom_config');
   const config = savedConfig ? { ...CARAVANA_CONFIG, ...JSON.parse(savedConfig) } : CARAVANA_CONFIG;
 
+  // Inicializa Cliente do Supabase (se configurado)
+  let supabaseClient = null;
+  if (window.supabase && config.supabaseUrl && config.supabaseAnonKey && config.supabaseUrl.startsWith('http')) {
+    try {
+      supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+      console.log('⚡ Supabase conectado com sucesso!');
+    } catch (sbInitErr) {
+      console.warn('Aviso: Falha ao inicializar Supabase:', sbInitErr);
+    }
+  }
+
   // Elementos do DOM
   const form = document.getElementById('registrationForm');
   const submitBtn = document.getElementById('submitBtn');
   const whatsappInput = document.getElementById('whatsapp');
   const categoryInputs = document.querySelectorAll('input[name="categoria"]');
   const musicoField = document.getElementById('musicoField');
-  const vagasInput = document.getElementById('vagas');
   const totalAmountEl = document.getElementById('totalAmount');
   const pixKeyInput = document.getElementById('pixKeyDisplay');
   const btnCopyPix = document.getElementById('btnCopyPix');
@@ -27,9 +37,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const pixTitularEl = document.getElementById('pixTitular');
   if (pixTitularEl) pixTitularEl.textContent = config.titularPix;
 
-  // Atualiza contagem inicial de vagas e sincroniza em tempo real com o Google Sheets
+  // Atualiza contagem local inicial e sincroniza com o banco de dados / planilha
   updateSeatsCounter();
-  syncWithGoogleSheets();
+  syncWithDatabase();
+
+  // Ativa canal Realtime do Supabase (para atualizar em tempo real na tela de todos sem refresh)
+  if (supabaseClient) {
+    try {
+      supabaseClient
+        .channel('caravana_realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inscricoes' }, () => {
+          console.log('🔄 Atualização recebida via Realtime do Supabase!');
+          syncWithDatabase();
+        })
+        .subscribe();
+    } catch (rtErr) {
+      console.warn('Realtime subscription:', rtErr);
+    }
+  }
 
   // 1. Formatação de Telefone / WhatsApp com Máscara
   if (whatsappInput) {
@@ -51,16 +76,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // 2. Troca de Categoria e Exibição de Campos Condicionais
   categoryInputs.forEach(radio => {
     radio.addEventListener('change', () => {
-      // Remove estilo de todos os cards
       document.querySelectorAll('.category-card').forEach(card => card.classList.remove('selected'));
-      
-      // Adiciona estilo no card selecionado
       const parentCard = radio.closest('.category-card');
       if (parentCard) parentCard.classList.add('selected');
 
       const selectedValue = radio.value;
-      
-      // Músico: exibe campo de instrumento
       if (selectedValue === 'Músico') {
         musicoField.classList.add('active');
         document.getElementById('instrumento').setAttribute('required', 'required');
@@ -95,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
             Copiar Chave
           `;
         }, 3000);
-      }).catch(err => {
+      }).catch(() => {
         alert('Não foi possível copiar automaticamente. A chave é: ' + keyToCopy);
       });
     });
@@ -106,7 +126,6 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
-      // Validação básica
       const nome = document.getElementById('nome').value.trim();
       const whatsapp = document.getElementById('whatsapp').value.trim();
       const comum = document.getElementById('comum').value.trim();
@@ -120,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Validação: Impede que a mesma pessoa cadastre mais de uma vaga pelo mesmo número
+      // Validação: Impede duplicidade pelo número de telefone
       const cleanPhone = whatsapp.replace(/\D/g, '');
       const existingList = getLocalRegistrations();
       const alreadyRegistered = existingList.find(item => {
@@ -133,11 +152,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Cada inscrição é estritamente 1 pessoa / 1 vaga
-      const vagas = 1;
       const valorTotalStr = `R$ ${config.valorPorPessoa.toFixed(2).replace('.', ',')}`;
 
-      // Monta objeto da inscrição
+      // Objeto da inscrição
       const inscricao = {
         id: 'INS_' + Date.now(),
         dataHora: new Date().toLocaleString('pt-BR'),
@@ -150,42 +167,57 @@ document.addEventListener('DOMContentLoaded', () => {
         vagas: 1,
         observacoes: obs,
         valorTotal: valorTotalStr,
-        statusPagamento: 'Pendente' // Pendente | Confirmado
+        statusPagamento: 'Pendente'
       };
 
-      // Desabilita botão durante salvamento
       submitBtn.disabled = true;
       submitBtn.innerHTML = `<span>Registrando confirmação...</span>`;
 
       try {
-        // 1. Salva localmente no navegador (garantia 100% que não perde os dados)
+        // 1. Salva no Supabase (Banco de Dados em Nuvem Ultra-Rápido)
+        if (supabaseClient) {
+          try {
+            const { error: sbErr } = await supabaseClient.from('inscricoes').insert([{
+              id: inscricao.id,
+              data_hora: inscricao.dataHora,
+              nome: inscricao.nome,
+              whatsapp: inscricao.whatsapp,
+              categoria: inscricao.categoria,
+              instrumento: inscricao.instrumento,
+              responsavel: inscricao.responsavel,
+              comum: inscricao.comum,
+              vagas: 1,
+              valor_total: inscricao.valorTotal,
+              status_pagamento: 'Pendente'
+            }]);
+            if (sbErr) console.warn('Supabase insert notice:', sbErr);
+          } catch (sbErr) {
+            console.warn('Falha no insert Supabase:', sbErr);
+          }
+        }
+
+        // 2. Salva localmente como garantia imediata
         saveLocalRegistration(inscricao);
 
-        // 2. Se houver Google Sheets URL configurada, envia para a planilha do Google
+        // 3. Mantém a gravação na Planilha do Google em segundo plano
         if (config.googleSheetsUrl && config.googleSheetsUrl.startsWith('http')) {
-          try {
-            await fetch(config.googleSheetsUrl, {
-              method: 'POST',
-              mode: 'no-cors', // Evita bloqueio de CORS no Google Apps Script
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(inscricao)
-            });
-          } catch (sheetsErr) {
-            console.warn('Aviso: envio para Google Sheets pendente ou offline.', sheetsErr);
-          }
+          fetch(config.googleSheetsUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(inscricao)
+          }).catch(err => console.warn('Google Sheets background sync:', err));
         }
 
         // Abre modal de sucesso
         showSuccessModal(inscricao);
         form.reset();
         
-        // Reseta categorias visuais
         document.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
         musicoField.classList.remove('active');
 
-        // Atualiza contadores e sincroniza novamente com a nuvem
         updateSeatsCounter();
-        setTimeout(syncWithGoogleSheets, 2000);
+        setTimeout(syncWithDatabase, 1500);
 
       } catch (err) {
         alert('Ocorreu um erro ao salvar sua inscrição. Por favor tente novamente.');
@@ -211,7 +243,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modalSummaryVagas').textContent = '1 Vaga Individual';
     document.getElementById('modalSummaryValor').textContent = 'R$ 90,00';
 
-    // Link do WhatsApp com mensagem pronta
     const msg = encodeURIComponent(
       `Olá! Confirmei minha presença na Caravana para Navegantes! 🚌✨\n\n` +
       `👤 Nome: ${item.nome}\n` +
@@ -238,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 6. Painel do Organizador (Admin)
+  // 5. Painel do Organizador (Admin)
   if (openAdminBtn) {
     openAdminBtn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -247,8 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pass === config.senhaAdmin) {
         renderAdminDashboard();
         if (adminModal) adminModal.classList.add('active');
-        // Sincroniza com a planilha do Google em tempo real ao abrir
-        await syncWithGoogleSheets();
+        await syncWithDatabase();
       } else {
         alert('Senha incorreta!');
       }
@@ -265,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnRefreshList.addEventListener('click', async () => {
       btnRefreshList.disabled = true;
       btnRefreshList.innerHTML = `<span>Sincronizando...</span>`;
-      await syncWithGoogleSheets();
+      await syncWithDatabase();
       renderAdminDashboard();
       btnRefreshList.disabled = false;
       btnRefreshList.innerHTML = `
@@ -276,55 +306,88 @@ document.addEventListener('DOMContentLoaded', () => {
         </svg>
         Atualizar
       `;
-      showToast('Lista sincronizada com a Planilha do Google!');
+      showToast('Lista sincronizada com a nuvem!');
     });
   }
 
-  // Sincroniza dados com o Google Sheets em tempo real
-  async function syncWithGoogleSheets() {
-    if (!config.googleSheetsUrl || !config.googleSheetsUrl.startsWith('http')) {
-      updateSeatsCounter();
-      return;
-    }
+  // Sincroniza dados com o Banco de Dados (Supabase) ou Planilha (Google Sheets)
+  async function syncWithDatabase() {
+    // 1. Prioridade: Supabase (Ultra-Rápido e Confiável)
+    if (supabaseClient) {
+      try {
+        const { data, error } = await supabaseClient
+          .from('inscricoes')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-    try {
-      const response = await fetch(config.googleSheetsUrl, { method: 'GET' });
-      if (!response.ok) throw new Error('Falha na resposta da planilha');
-      const json = await response.json();
+        if (!error && Array.isArray(data)) {
+          const remoteList = data.map(row => ({
+            id: row.id,
+            dataHora: row.data_hora,
+            nome: row.nome,
+            whatsapp: row.whatsapp,
+            categoria: row.categoria,
+            instrumento: row.instrumento || '-',
+            responsavel: row.responsavel || '-',
+            comum: row.comum,
+            vagas: row.vagas || 1,
+            valorTotal: row.valor_total || 'R$ 90,00',
+            statusPagamento: row.status_pagamento || 'Pendente'
+          }));
 
-      if (json && json.status === 'success' && Array.isArray(json.data)) {
-        const remoteList = json.data
-          .map((row, idx) => ({
-            id: 'GS_' + idx + '_' + (row['Data / Hora'] || Date.now()),
-            dataHora: row['Data / Hora'] ? new Date(row['Data / Hora']).toLocaleString('pt-BR') : '',
-            nome: row['Nome Completo'] || '',
-            whatsapp: row['WhatsApp'] || '',
-            categoria: row['Categoria'] || '',
-            instrumento: row['Instrumento'] || '-',
-            responsavel: row['Responsável'] || '-',
-            comum: row['Comum Congregação'] || '',
-            vagas: parseInt(row['Qtd Vagas'], 10) || 1,
-            valorTotal: row['Valor Total (R$)'] || 'R$ 90,00',
-            statusPagamento: row['Status Pagamento'] || 'Pendente'
-          }))
-          .filter(item => item.nome && item.nome.trim() !== '');
+          localStorage.setItem('caravana_registrations', JSON.stringify(remoteList));
+          updateSeatsCounter();
 
-        // Atualiza armazenamento local com a lista oficial da nuvem
-        localStorage.setItem('caravana_registrations', JSON.stringify(remoteList));
-        updateSeatsCounter();
-
-        // Se o painel estiver aberto, atualiza a tabela
-        if (adminModal && adminModal.classList.contains('active')) {
-          renderAdminDashboard();
+          if (adminModal && adminModal.classList.contains('active')) {
+            renderAdminDashboard();
+          }
+          return;
         }
+      } catch (sbFetchErr) {
+        console.warn('Erro ao consultar Supabase:', sbFetchErr);
       }
-    } catch (err) {
-      console.warn('Sincronização com Google Sheets pendente:', err);
-      updateSeatsCounter();
     }
+
+    // 2. Fallback: Google Sheets
+    if (config.googleSheetsUrl && config.googleSheetsUrl.startsWith('http')) {
+      try {
+        const response = await fetch(config.googleSheetsUrl, { method: 'GET' });
+        if (response.ok) {
+          const json = await response.json();
+          if (json && json.status === 'success' && Array.isArray(json.data)) {
+            const remoteList = json.data
+              .map((row, idx) => ({
+                id: 'GS_' + idx + '_' + (row['Data / Hora'] || Date.now()),
+                dataHora: row['Data / Hora'] ? new Date(row['Data / Hora']).toLocaleString('pt-BR') : '',
+                nome: row['Nome Completo'] || '',
+                whatsapp: row['WhatsApp'] || '',
+                categoria: row['Categoria'] || '',
+                instrumento: row['Instrumento'] || '-',
+                responsavel: row['Responsável'] || '-',
+                comum: row['Comum Congregação'] || '',
+                vagas: parseInt(row['Qtd Vagas'], 10) || 1,
+                valorTotal: row['Valor Total (R$)'] || 'R$ 90,00',
+                statusPagamento: row['Status Pagamento'] || 'Pendente'
+              }))
+              .filter(item => item.nome && item.nome.trim() !== '');
+
+            localStorage.setItem('caravana_registrations', JSON.stringify(remoteList));
+            updateSeatsCounter();
+
+            if (adminModal && adminModal.classList.contains('active')) {
+              renderAdminDashboard();
+            }
+          }
+        }
+      } catch (sheetsErr) {
+        console.warn('Sincronização com Google Sheets pendente:', sheetsErr);
+      }
+    }
+
+    updateSeatsCounter();
   }
 
-  // Salvar inscrição localmente
+  // Funções de Armazenamento Local
   function saveLocalRegistration(item) {
     const list = getLocalRegistrations();
     list.unshift(item);
@@ -365,15 +428,14 @@ document.addEventListener('DOMContentLoaded', () => {
       tbody.innerHTML = '';
 
       if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 24px; color: #888;">Nenhuma confirmação registrada ainda.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 24px; color: #888;">Nenhuma confirmação registrada ainda.</td></tr>`;
         return;
       }
 
-      items.forEach((item, index) => {
+      items.forEach((item) => {
         const tr = document.createElement('tr');
         const zapClean = item.whatsapp.replace(/\D/g, '');
         const zapLink = `https://wa.me/55${zapClean}?text=${encodeURIComponent('A Paz de Deus, ' + item.nome + '! Tudo bem? Estou entrando em contato sobre a Caravana para Navegantes.')}`;
-        
         const isPago = item.statusPagamento === 'Confirmado' || item.statusPagamento === 'Pago';
 
         tr.innerHTML = `
@@ -387,10 +449,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <td>
             <span class="badge-cat">${item.categoria}</span>
             ${item.instrumento !== '-' ? `<br><small style="color:#666;">🎻 ${item.instrumento}</small>` : ''}
-            ${item.responsavel !== '-' ? `<br><small style="color:#666;">Resp: ${item.responsavel}</small>` : ''}
           </td>
           <td>${item.comum}</td>
-          <td style="text-align:center;"><strong>${item.vagas}</strong></td>
           <td style="text-align:center;">
             <button class="status-btn ${isPago ? 'btn-paid' : 'btn-pending'}" data-id="${item.id}">
               ${isPago ? '✓ Pago' : '⏳ Pendente'}
@@ -405,7 +465,6 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.appendChild(tr);
       });
 
-      // Eventos dos botões de status
       document.querySelectorAll('.status-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const id = e.currentTarget.getAttribute('data-id');
@@ -413,7 +472,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
 
-      // Eventos de exclusão
       document.querySelectorAll('.btn-delete').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const id = e.currentTarget.getAttribute('data-id');
@@ -424,8 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Totais e Métricas
-    const totalVagas = list.reduce((sum, item) => sum + (parseInt(item.vagas, 10) || 1), 0);
+    const totalVagas = list.length;
     const musicosCount = list.filter(item => item.categoria === 'Músico').length;
     const totalEstimado = totalVagas * config.valorPorPessoa;
 
@@ -435,13 +492,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     displayList(list);
 
-    // Filtros e busca
-    if (searchInput) {
-      searchInput.oninput = () => applyFilters();
-    }
-    if (filterSelect) {
-      filterSelect.onchange = () => applyFilters();
-    }
+    if (searchInput) searchInput.oninput = () => applyFilters();
+    if (filterSelect) filterSelect.onchange = () => applyFilters();
 
     function applyFilters() {
       const q = searchInput.value.toLowerCase().trim();
@@ -455,27 +507,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function togglePaymentStatus(id) {
+  // Alternar Status de Pagamento (Pendente / Confirmado)
+  async function togglePaymentStatus(id) {
     const list = getLocalRegistrations();
     const item = list.find(i => i.id === id);
     if (item) {
       item.statusPagamento = (item.statusPagamento === 'Confirmado' || item.statusPagamento === 'Pago') ? 'Pendente' : 'Confirmado';
       localStorage.setItem('caravana_registrations', JSON.stringify(list));
       renderAdminDashboard();
+
+      // Sincroniza no Supabase
+      if (supabaseClient) {
+        try {
+          await supabaseClient.from('inscricoes').update({ status_pagamento: item.statusPagamento }).eq('id', id);
+        } catch (e) {
+          console.warn('Erro ao atualizar status no Supabase:', e);
+        }
+      }
+
       showToast(`Status de ${item.nome} atualizado para ${item.statusPagamento}!`);
     }
   }
 
-  function deleteRegistration(id) {
+  // Excluir Inscrição
+  async function deleteRegistration(id) {
     let list = getLocalRegistrations();
     list = list.filter(i => i.id !== id);
     localStorage.setItem('caravana_registrations', JSON.stringify(list));
     renderAdminDashboard();
     updateSeatsCounter();
+
+    // Exclui no Supabase
+    if (supabaseClient) {
+      try {
+        await supabaseClient.from('inscricoes').delete().eq('id', id);
+      } catch (e) {
+        console.warn('Erro ao excluir no Supabase:', e);
+      }
+    }
+
     showToast('Inscrição removida!');
   }
 
-  // 7. Exportar para CSV / Excel
+  // 6. Exportar para CSV / Excel
   const btnExportCsv = document.getElementById('btnExportCsv');
   if (btnExportCsv) {
     btnExportCsv.addEventListener('click', () => {
@@ -485,17 +559,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Cabeçalhos CSV
-      const headers = ['Data Inscrição', 'Nome Completo', 'WhatsApp', 'Categoria', 'Instrumento', 'Responsável', 'Comum', 'Qtd Vagas', 'Valor Total', 'Status'];
+      const headers = ['Data Inscrição', 'Nome Completo', 'WhatsApp', 'Categoria', 'Instrumento', 'Comum', 'Vagas', 'Valor Total', 'Status'];
       const rows = list.map(i => [
         `"${i.dataHora}"`,
         `"${i.nome}"`,
         `"${i.whatsapp}"`,
         `"${i.categoria}"`,
         `"${i.instrumento}"`,
-        `"${i.responsavel}"`,
         `"${i.comum}"`,
-        i.vagas,
+        1,
         `"${i.valorTotal}"`,
         `"${i.statusPagamento}"`
       ]);
@@ -513,7 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 8. Imprimir Lista de Embarque
+  // 7. Imprimir Lista de Embarque
   const btnPrintList = document.getElementById('btnPrintList');
   if (btnPrintList) {
     btnPrintList.addEventListener('click', () => {
