@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const adminModal = document.getElementById('adminModal');
   const openAdminBtn = document.getElementById('openAdminBtn');
   const closeAdminBtn = document.getElementById('closeAdminBtn');
+  const btnRefreshList = document.getElementById('btnRefreshList');
   const toast = document.getElementById('toastNotice');
 
   // Inicializa textos da página com base na configuração
@@ -26,8 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const pixTitularEl = document.getElementById('pixTitular');
   if (pixTitularEl) pixTitularEl.textContent = config.titularPix;
 
-  // Atualiza contagem de vagas ocupadas
+  // Atualiza contagem inicial de vagas e sincroniza em tempo real com o Google Sheets
   updateSeatsCounter();
+  syncWithGoogleSheets();
 
   // 1. Formatação de Telefone / WhatsApp com Máscara
   if (whatsappInput) {
@@ -181,8 +183,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.category-card').forEach(c => c.classList.remove('selected'));
         musicoField.classList.remove('active');
 
-        // Atualiza contadores
+        // Atualiza contadores e sincroniza novamente com a nuvem
         updateSeatsCounter();
+        setTimeout(syncWithGoogleSheets, 2000);
 
       } catch (err) {
         alert('Ocorreu um erro ao salvar sua inscrição. Por favor tente novamente.');
@@ -237,13 +240,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 6. Painel do Organizador (Admin)
   if (openAdminBtn) {
-    openAdminBtn.addEventListener('click', (e) => {
+    openAdminBtn.addEventListener('click', async (e) => {
       e.preventDefault();
       const pass = prompt('Digite a senha de organizador para ver a lista:');
       if (pass === null) return;
       if (pass === config.senhaAdmin) {
         renderAdminDashboard();
         if (adminModal) adminModal.classList.add('active');
+        // Sincroniza com a planilha do Google em tempo real ao abrir
+        await syncWithGoogleSheets();
       } else {
         alert('Senha incorreta!');
       }
@@ -254,6 +259,69 @@ document.addEventListener('DOMContentLoaded', () => {
     closeAdminBtn.addEventListener('click', () => {
       adminModal.classList.remove('active');
     });
+  }
+
+  if (btnRefreshList) {
+    btnRefreshList.addEventListener('click', async () => {
+      btnRefreshList.disabled = true;
+      btnRefreshList.innerHTML = `<span>Sincronizando...</span>`;
+      await syncWithGoogleSheets();
+      renderAdminDashboard();
+      btnRefreshList.disabled = false;
+      btnRefreshList.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+        Atualizar
+      `;
+      showToast('Lista sincronizada com a Planilha do Google!');
+    });
+  }
+
+  // Sincroniza dados com o Google Sheets em tempo real
+  async function syncWithGoogleSheets() {
+    if (!config.googleSheetsUrl || !config.googleSheetsUrl.startsWith('http')) {
+      updateSeatsCounter();
+      return;
+    }
+
+    try {
+      const response = await fetch(config.googleSheetsUrl, { method: 'GET' });
+      if (!response.ok) throw new Error('Falha na resposta da planilha');
+      const json = await response.json();
+
+      if (json && json.status === 'success' && Array.isArray(json.data)) {
+        const remoteList = json.data
+          .map((row, idx) => ({
+            id: 'GS_' + idx + '_' + (row['Data / Hora'] || Date.now()),
+            dataHora: row['Data / Hora'] ? new Date(row['Data / Hora']).toLocaleString('pt-BR') : '',
+            nome: row['Nome Completo'] || '',
+            whatsapp: row['WhatsApp'] || '',
+            categoria: row['Categoria'] || '',
+            instrumento: row['Instrumento'] || '-',
+            responsavel: row['Responsável'] || '-',
+            comum: row['Comum Congregação'] || '',
+            vagas: parseInt(row['Qtd Vagas'], 10) || 1,
+            valorTotal: row['Valor Total (R$)'] || 'R$ 90,00',
+            statusPagamento: row['Status Pagamento'] || 'Pendente'
+          }))
+          .filter(item => item.nome && item.nome.trim() !== '');
+
+        // Atualiza armazenamento local com a lista oficial da nuvem
+        localStorage.setItem('caravana_registrations', JSON.stringify(remoteList));
+        updateSeatsCounter();
+
+        // Se o painel estiver aberto, atualiza a tabela
+        if (adminModal && adminModal.classList.contains('active')) {
+          renderAdminDashboard();
+        }
+      }
+    } catch (err) {
+      console.warn('Sincronização com Google Sheets pendente:', err);
+      updateSeatsCounter();
+    }
   }
 
   // Salvar inscrição localmente
