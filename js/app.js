@@ -171,6 +171,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Validação: Impede duplicidade pelo número de telefone ou CPF
+      if (supabaseClient) {
+        await syncWithDatabase();
+      }
       const cleanPhone = whatsapp.replace(/\D/g, '');
       const existingList = getLocalRegistrations();
       const alreadyRegistered = existingList.find(item => {
