@@ -21,8 +21,8 @@ const CARAVANA_CONFIG = {
 
   // Integração com Banco de Dados Supabase (100% Gratuito e Ultra-Rápido)
   // Obtenha em https://supabase.com > Seu Projeto > Project Settings > API
-  supabaseUrl: "", // Ex: "https://xyzabcdefghijk.supabase.co"
-  supabaseAnonKey: "", // Cole aqui sua chave 'anon public'
+  supabaseUrl: "https://mxdusbuhnngsqqotsjhz.supabase.co", // URL do seu projeto Supabase
+  supabaseAnonKey: "", // Cole aqui sua chave 'anon public' (começa com eyJhbGci...)
 
   // Integração com Google Planilhas (Mantida para atualizar a planilha)
   googleSheetsUrl: "https://script.google.com/macros/s/AKfycbxaRo9zHOI19HnuUQSkel8_fQN_q5OJ7-IV79zG46tVo9KVmJyugEvm3JOoS-paZWICAg/exec" 

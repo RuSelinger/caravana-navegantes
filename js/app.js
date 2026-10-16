@@ -6,9 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Inicializa Cliente do Supabase (se configurado)
   let supabaseClient = null;
-  if (window.supabase && config.supabaseUrl && config.supabaseAnonKey && config.supabaseUrl.startsWith('http')) {
+  const rawSbUrl = (config.supabaseUrl || '').trim();
+  const cleanSbUrl = rawSbUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+  const rawSbKey = (config.supabaseAnonKey || '').trim();
+
+  if (window.supabase && cleanSbUrl && rawSbKey && cleanSbUrl.startsWith('http')) {
     try {
-      supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+      supabaseClient = window.supabase.createClient(cleanSbUrl, rawSbKey);
       console.log('⚡ Supabase conectado com sucesso!');
     } catch (sbInitErr) {
       console.warn('Aviso: Falha ao inicializar Supabase:', sbInitErr);
